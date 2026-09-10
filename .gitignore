@@ -14,6 +14,8 @@ gaze360_repo/
 gaze_out.jpg
 test_out.jpg
 *.mp4
+*.jsonl
+eval_out/
 
 # python cruft
 __pycache__/
