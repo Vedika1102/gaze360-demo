@@ -111,6 +111,68 @@ Representative CPU results (1 face, inputs capped at 640 px):
 Takeaway: gaze is most fragile to **sensor noise** (add denoising upstream) and
 robust to **JPEG/darkening**; smoothing markedly steadies the live output.
 
+## Cross-dataset accuracy (MPIIFaceGaze)
+
+This checkpoint is **Gaze360-trained**, so evaluating on MPIIFaceGaze measures
+**cross-dataset generalization**. Ground-truth gaze is the camera-frame vector
+`gaze_target − face_center` from each subject's annotations; our model predicts
+in the same frame, so no head-pose normalization is needed. Run:
+
+```bash
+python export_onnx.py                                  # (for the fast backend)
+python eval_mpii.py --data data/MPIIFaceGaze --per-subject 50
+python eval_mpii.py --data data/MPIIFaceGaze --per-subject 50 --tta
+```
+
+| config | mean angular error | median |
+|---|---|---|
+| baseline | **20.39°** | 17.71° |
+| + test-time aug (hflip) | **18.01°** (−11.7%) | — |
+
+*(746 samples across 15 subjects; ~20° is the expected range for Gaze360→MPII
+cross-dataset transfer.)*
+
+## Uncertainty-aware gaze (novel result)
+
+The softmax **entropy** of the yaw/pitch heads is a **calibrated uncertainty
+signal**: it predicts when the model is wrong, with no extra training.
+
+- **Correlation(confidence, angular error) = −0.54** (Pearson) — higher
+  confidence ⇒ lower error.
+- **Selective prediction** — discarding the least-confident predictions
+  monotonically lowers error:
+
+| coverage (most-confident kept) | 100% | 80% | 50% | 10% |
+|---|---|---|---|---|
+| mean angular error | 20.4° | 16.8° | 14.9° | 13.1° |
+
+Keeping the top 50% cuts cross-dataset error **27%** — useful on a robot, where
+a low-confidence gaze estimate can be dropped rather than acted on.
+
+![risk-coverage](docs/risk_coverage.png)
+
+## Latency (CPU) and deployment
+
+`bench_latency.py` compares detector × backend combinations (p50, capped at
+640 px):
+
+| config | detect | estimate | total p50 | FPS | speedup |
+|---|---|---|---|---|---|
+| MTCNN + PyTorch (baseline) | 136 ms | 121 ms | 259 ms | 3.9 | 1.0× |
+| YuNet + PyTorch | 22 ms | 118 ms | 140 ms | 7.2 | 1.9× |
+| **YuNet + ONNX-fp32** | 47 ms | **72 ms** | **116 ms** | **8.6** | **2.2×** |
+| YuNet + ONNX-INT8 | 53 ms | 1391 ms | 1465 ms | 0.7 | 0.2× |
+
+Takeaways: swapping MTCNN → **YuNet** cuts detection ~6×; **ONNX Runtime fp32**
+further speeds the ResNet-50 estimator (graph optimizations). **Dynamic INT8
+quantization *hurts* here** — it targets MatMul/LSTM, not convolutions, so it
+regresses a CNN badly; static (calibration-based) quantization would be the
+correct tool. ONNX export is also the natural handoff to edge runtimes (Jetson).
+
+![latency](docs/latency.png)
+
+Enable the fast path in the demo: `--detector yunet --backend onnx`.
+
 ## How it works
 
 1. **Detect** — MTCNN returns face boxes (`keep_all=True`).
@@ -127,8 +189,12 @@ robust to **JPEG/darkening**; smoothing markedly steadies the live output.
 - `gaze_utils.py` — gaze math, entropy confidence, low-light correction.
 - `filters.py` — One-Euro temporal filter.
 - `tracking.py` — IoU tracker for stable per-face IDs.
+- `detectors.py` — pluggable MTCNN / YuNet face detectors.
 - `gaze.py` — detection → estimation → tracking/smoothing → rendering + CLI.
 - `eval_robustness.py` — label-free robustness/latency eval harness.
+- `eval_mpii.py` — MPIIFaceGaze cross-dataset accuracy + uncertainty analysis.
+- `export_onnx.py` — export L2CS to ONNX (+INT8) with parity check.
+- `bench_latency.py` — detector × backend latency benchmark.
 
 ## Credits & license
 

@@ -46,6 +46,15 @@ def angles_to_vector(yaw, pitch):
 def angular_error_deg(y1, p1, y2, p2):
     """Angle (degrees) between two gaze directions given as (yaw, pitch) rad."""
     v1, v2 = angles_to_vector(y1, p1), angles_to_vector(y2, p2)
+    return angular_error_vectors(v1, v2)
+
+
+def angular_error_vectors(v1, v2):
+    """Angle (degrees) between two 3D gaze vectors (need not be unit)."""
+    v1 = np.asarray(v1, dtype=np.float64)
+    v2 = np.asarray(v2, dtype=np.float64)
+    v1 = v1 / (np.linalg.norm(v1) + 1e-9)
+    v2 = v2 / (np.linalg.norm(v2) + 1e-9)
     cos = float(np.clip(np.dot(v1, v2), -1.0, 1.0))
     return float(np.degrees(np.arccos(cos)))
 

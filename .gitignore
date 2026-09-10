@@ -17,6 +17,13 @@ test_out.jpg
 *.jsonl
 eval_out/
 
+# datasets (download separately, see README)
+data/
+*.zip
+
+# exported / detector model weights (regenerate: export_onnx.py; download YuNet)
+models/
+
 # python cruft
 __pycache__/
 *.pyc

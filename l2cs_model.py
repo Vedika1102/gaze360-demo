@@ -52,3 +52,25 @@ def load_l2cs(weights_path: str, device: str = "cpu", num_bins: int = 90) -> L2C
     state = {k.replace("module.", ""): v for k, v in state.items()}
     model.load_state_dict(state, strict=True)
     return model.to(device).eval()
+
+
+class OnnxL2CS:
+    """ONNX Runtime backend exposing the same (yaw_logits, pitch_logits) call.
+
+    Returns torch tensors so downstream decoding/confidence code is unchanged.
+    """
+
+    def __init__(self, onnx_path: str, intra_threads: int = 0):
+        import onnxruntime as ort
+        so = ort.SessionOptions()
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        if intra_threads:
+            so.intra_op_num_threads = intra_threads
+        self.sess = ort.InferenceSession(onnx_path, sess_options=so,
+                                         providers=["CPUExecutionProvider"])
+        self.input_name = self.sess.get_inputs()[0].name
+
+    def __call__(self, x):
+        arr = x.detach().cpu().numpy() if hasattr(x, "detach") else x
+        yaw, pitch = self.sess.run(None, {self.input_name: arr.astype("float32")})
+        return torch.from_numpy(yaw), torch.from_numpy(pitch)

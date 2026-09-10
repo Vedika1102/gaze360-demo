@@ -23,12 +23,11 @@ import cv2
 import numpy as np
 import torch
 
-from facenet_pytorch import MTCNN
-
+from detectors import build_detector
 from filters import OneEuroFilter
 from gaze_utils import (auto_lowlight, decode_angles, gaze_confidence,
                         preprocess)
-from l2cs_model import load_l2cs
+from l2cs_model import OnnxL2CS, load_l2cs
 from tracking import IoUTracker
 
 _IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -56,7 +55,8 @@ def draw_gaze(frame, box, yaw, pitch, tid, conf, low_conf):
 class GazePipeline:
     def __init__(self, weights, device="cpu", det_size=224, input_size=224,
                  min_prob=0.90, min_size=24, conf_thresh=0.55,
-                 smooth=True, lowlight=True):
+                 smooth=True, lowlight=True, detector="mtcnn",
+                 backend="torch", onnx_path=None):
         self.device = device
         self.input_size = input_size
         self.min_prob = min_prob
@@ -64,9 +64,11 @@ class GazePipeline:
         self.conf_thresh = conf_thresh
         self.smooth = smooth
         self.lowlight = lowlight
-        self.detector = MTCNN(keep_all=True, device=device, image_size=det_size,
-                              post_process=False, select_largest=False)
-        self.model = load_l2cs(weights, device=device)
+        self.detector = build_detector(detector, device=device)
+        if backend == "torch":
+            self.model = load_l2cs(weights, device=device)
+        else:  # onnx / onnx-int8
+            self.model = OnnxL2CS(onnx_path)
         self.idx = torch.arange(90, dtype=torch.float32, device=device)
         self.tracker = IoUTracker()
         self._filts = {}  # tid -> (OneEuroFilter yaw, OneEuroFilter pitch)
@@ -95,9 +97,9 @@ class GazePipeline:
         self.timings["detect_ms"] = (time.perf_counter() - t0) * 1000
 
         kept_boxes, crops = [], []
-        if boxes is not None:
+        if len(boxes):
             for box, prob in zip(boxes, probs):
-                if prob is None or prob < self.min_prob:
+                if prob < self.min_prob:
                     continue
                 x1, y1, x2, y2 = [int(v) for v in box]
                 x1, y1 = max(x1, 0), max(y1, 0)
@@ -215,6 +217,9 @@ def main():
     ap.add_argument("--conf-thresh", type=float, default=0.55, help="gaze conf gate")
     ap.add_argument("--no-smooth", action="store_true")
     ap.add_argument("--no-lowlight", action="store_true")
+    ap.add_argument("--detector", default="mtcnn", choices=["mtcnn", "yunet"])
+    ap.add_argument("--backend", default="torch", choices=["torch", "onnx"])
+    ap.add_argument("--onnx", default="models/l2cs.onnx", help="onnx model path")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
@@ -222,7 +227,8 @@ def main():
         args.weights, device=args.device, det_size=args.det_size,
         input_size=args.input_size, min_prob=args.min_prob,
         min_size=args.min_size, conf_thresh=args.conf_thresh,
-        smooth=not args.no_smooth, lowlight=not args.no_lowlight)
+        smooth=not args.no_smooth, lowlight=not args.no_lowlight,
+        detector=args.detector, backend=args.backend, onnx_path=args.onnx)
 
     log_fp = open(args.log, "w") if args.log else None
     try:
