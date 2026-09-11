@@ -173,6 +173,57 @@ correct tool. ONNX export is also the natural handoff to edge runtimes (Jetson).
 
 Enable the fast path in the demo: `--detector yunet --backend onnx`.
 
+## Addressee awareness — who is talking *to the robot*? (Stage 1)
+
+Gaze answers "who is looking at the robot"; it does **not** answer "who is
+talking *to* it." This stage fuses gaze with **active-speaker detection** into
+an **interpretable** per-person addressee state and a robot conversational
+role — every decision traces to named, logged signals (no black box):
+
+```
+Gaze360  -> gaze cone angle to camera + confidence   (attention)
+ASD      -> mouth-region motion energy               (is this person speaking)
+fusion   -> addressee state + robot role
+```
+
+Per-person state and robot role:
+
+| signal | meaning |
+|---|---|
+| `BYSTANDER` | not attending the robot |
+| `ATTENTIVE` | looking at the robot, not speaking |
+| `ADDRESSING_ROBOT` | attentive **and** speaking (debounced) |
+| robot `PASSIVE` / `ACTIVE` | no one / someone is addressing the robot |
+
+Debouncing (engagement, speaking, and ACTIVE-release) suppresses transient
+flicker. Run on a clip or webcam:
+
+```bash
+python make_test_convo.py                              # build a test clip
+python converse.py --source test_convo.mp4 --output out.mp4 --log run.jsonl
+python converse.py --source 0                          # webcam
+```
+
+Validated on a scripted clip (quiet → speaking → quiet) built from a real
+face: the state machine holds `ATTENTIVE/PASSIVE` while quiet and switches to
+`ADDRESSING_ROBOT/ACTIVE` exactly over the speaking segment. A spurious
+background detection is correctly held as `BYSTANDER` — graceful multi-party
+degradation.
+
+![addressee demo](docs/addressee_demo.jpg)
+
+**Model-free ASD** (mouth motion) is a deliberate Stage-1 proxy for
+audio-visual ASD (TalkNet). **Known limitation:** `ADDRESSING_ROBOT` currently =
+attentive + speaking, so someone who looks at the robot while talking to *other
+people* can misfire. Disambiguating that — plus **backchannel vs interruption**
+turn-taking — needs multi-party mutual-gaze and a turn-taking model (**VAP**,
+Ekstedt & Skantze 2022). Planned next:
+
+- **Stage 2** — add VAP: distinguish backchannels ("mhm", keep talking) from
+  genuine interruptions (yield, then resume-or-abandon the prior plan).
+- **Stage 3** — multi-party robustness + the "looking-but-addressing-others"
+  case, with addressee precision/recall on labeled multi-party video.
+
 ## How it works
 
 1. **Detect** — MTCNN returns face boxes (`keep_all=True`).
@@ -195,6 +246,10 @@ Enable the fast path in the demo: `--detector yunet --backend onnx`.
 - `eval_mpii.py` — MPIIFaceGaze cross-dataset accuracy + uncertainty analysis.
 - `export_onnx.py` — export L2CS to ONNX (+INT8) with parity check.
 - `bench_latency.py` — detector × backend latency benchmark.
+- `asd.py` — lightweight visual active-speaker detection (mouth motion).
+- `addressee.py` — interpretable gaze × speaking fusion + robot state machine.
+- `converse.py` — addressee-aware runner (video/webcam) + JSONL logging.
+- `make_test_convo.py` — builds the scripted validation clip.
 
 ## Credits & license
 
