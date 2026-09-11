@@ -212,6 +212,32 @@ degradation.
 
 ![addressee demo](docs/addressee_demo.jpg)
 
+### Stage 1 evaluation
+
+Two self-contained quantitative evals (`eval_asd.py`, `eval_fusion.py`):
+
+**Active-speaker detector** (mouth motion), 75 in-memory frames with known
+speaking segments (no codec noise):
+
+| accuracy | precision | recall | F1 |
+|---|---|---|---|
+| 0.79 | 0.68 | **0.87** | **0.77** |
+
+High recall, lower precision (rolling-window tail) — a fair score for the
+heuristic that quantifies the headroom a TalkNet swap would fill.
+
+**Addressee fusion / state machine**, 7 controlled multi-party scenarios:
+
+- **per-person state accuracy 9/9 (100%)**, **robot-role accuracy 6/6 (100%)**
+- background off-axis speaker → correctly `BYSTANDER` (no false ACTIVE trigger)
+- low-confidence gaze → gated to `BYSTANDER`
+- temporal engage → release verified (`ACTIVE` → `PASSIVE`)
+- the "looking-but-addressing-others" case is reported as a **known gap**
+  (fires `ADDRESSING_ROBOT`; needs Stage 2/3)
+
+*Not yet done:* recognized ASD benchmark (Columbia/AVA) and real multi-party
+addressee precision/recall (Vernissage/AMI) — those need dataset downloads.
+
 **Model-free ASD** (mouth motion) is a deliberate Stage-1 proxy for
 audio-visual ASD (TalkNet). **Known limitation:** `ADDRESSING_ROBOT` currently =
 attentive + speaking, so someone who looks at the robot while talking to *other
@@ -250,6 +276,8 @@ Ekstedt & Skantze 2022). Planned next:
 - `addressee.py` — interpretable gaze × speaking fusion + robot state machine.
 - `converse.py` — addressee-aware runner (video/webcam) + JSONL logging.
 - `make_test_convo.py` — builds the scripted validation clip.
+- `eval_asd.py` — quantitative active-speaker-detector eval (P/R/F1).
+- `eval_fusion.py` — controlled multi-party addressee state-machine eval.
 
 ## Credits & license
 
