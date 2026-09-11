@@ -18,23 +18,26 @@ mirrored on Hugging Face, it needs no temporal buffer, and it is the stronger
 real-time / on-robot choice. This repo uses L2CS-Net; swapping in the Gaze360
 LSTM later only requires a new `model.py` + weights.
 
-## Setup
+## Setup (fresh clone)
 
-Uses [`uv`](https://docs.astral.sh/uv/) with Python 3.12.
+Uses [`uv`](https://docs.astral.sh/uv/) with Python 3.12 (system Python 3.13+
+lacks wheels for some CV deps). Nothing large is committed — weights, datasets,
+and exported ONNX are gitignored and fetched by the steps below.
 
 ```bash
 uv venv --python 3.12
 uv pip install -r requirements.txt
+
+# download all model weights (L2CS, YuNet, TalkNet) + export ONNX:
+PYTHON=./.venv/Scripts/python.exe bash scripts/download_models.sh   # Windows/uv
+# PYTHON=./.venv/bin/python bash scripts/download_models.sh          # Linux/macOS
 ```
 
-## Weights
+That's everything needed to **run** the system. Datasets (only needed to
+reproduce the evals) are downloaded separately — see each eval section below.
 
-The L2CS-Net (Gaze360, ResNet-50) checkpoint (~96 MB):
-
-```bash
-curl -L -o gaze360_model.pth.tar \
-  "https://huggingface.co/smoky1496/gaze360/resolve/main/gaze360.pkl?download=true"
-```
+Note: on Windows set `PYTHONUTF8=1` before scripts that export ONNX (avoids a
+console-encoding crash in torch's exporter).
 
 ## Run
 
@@ -353,6 +356,22 @@ yields).
 - `turntaking.py` — turn-taking signal interface + VAD/timing heuristic backend.
 - `controller.py` — interpretable conversational controller (turn-taking policy).
 - `eval_controller.py` — scripted conversation-scenario test for the controller.
+
+## Swapping in other models
+
+The pipeline is modular; each stage has a small, documented contract so a
+different model can drop in without touching the rest.
+
+| stage | file | contract to implement |
+|---|---|---|
+| **Face detector** | `detectors.py` | class with `detect(rgb) -> (boxes_xyxy [N,4], probs [N])`; register in `build_detector`, select via `--detector` |
+| **Gaze model** | `l2cs_model.py` | callable `model(tensor[N,3,H,W]) -> (yaw_logits[N,B], pitch_logits[N,B])`; `gaze_utils.decode_angles` turns bins into radians (adjust if your model regresses angles directly) |
+| **Active-speaker detection** | `asd.py` (heuristic) / `talknet_asd.py` (TalkNet) | produce a per-face **speaking score** (mouth-motion: `update(id, frame, box)`; TalkNet: `score(faces, mfcc)`). Any new ASD just needs to emit a comparable per-face score |
+| **Turn-taking** | `turntaking.py` | implement the `TurnTakingSignal` interface: `step(t, user_vocalizing, robot_speaking) -> {event: HOLD\|BACKCHANNEL\|TURN_SHIFT, confidence}`. This is where a pretrained **VAP** model plugs in behind the heuristic |
+| **Controller** | `controller.py` | model-agnostic; consumes addressee state + turn-taking events, so it works unchanged with any of the above |
+
+Evals are backend-agnostic too: `eval_columbia.py --asd {mouth,talknet}` runs
+the same harness/windows/matching, so a new ASD is an apples-to-apples swap.
 
 ## Credits & license
 

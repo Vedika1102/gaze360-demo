@@ -1,10 +1,25 @@
+# core
 torch
 torchvision
 numpy
 opencv-python
-facenet-pytorch
 pillow
+
+# face detection
+facenet-pytorch          # MTCNN detector (YuNet uses opencv's bundled DNN)
+
+# audio-visual ASD (TalkNet) + audio features
+scipy
+python_speech_features
+
+# plots / eval
 matplotlib
+
+# ONNX export + fast CPU inference
 onnx
 onnxruntime
 onnxscript
+
+# dataset / weight download (for reproducing evals; not needed at runtime)
+gdown
+yt-dlp
