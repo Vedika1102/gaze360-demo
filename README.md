@@ -237,25 +237,41 @@ heuristic that quantifies the headroom a TalkNet swap would fill.
 
 ### Recognized ASD benchmark — Columbia
 
-`eval_columbia.py` runs the current mouth-motion detector through the standard
-**Columbia ASD** protocol (Chakravarty & Zisserman 2016): per labeled frame,
-match each speaker's GT face box to a detected face, take that face's speaking
-score, report per-speaker F1 over {bell, boll, lieb, long, sick}. Evaluated on
-dense mixed-class windows (a subset of the 87-min video) to bound CPU cost.
+`eval_columbia.py` runs both ASD backends through the standard **Columbia ASD**
+protocol (Chakravarty & Zisserman 2016): per labeled frame, match each speaker's
+GT face box to a detected face, take that face's speaking score, report
+per-speaker F1 over {bell, boll, lieb, long, sick}. Same detection, tracking,
+windows, and matching for both — so the comparison isolates the **ASD method**.
+Evaluated on dense mixed-class windows (a subset of the 87-min video) to bound
+CPU cost.
 
-| speaker | bell | boll | lieb | long | sick | **avg** | TalkNet |
-|---|---|---|---|---|---|---|---|
-| F1 | 75.8 | 71.0 | 99.8 | 34.6 | 83.0 | **72.8** | 96.3 |
+```bash
+python eval_columbia.py --asd mouth
+python eval_columbia.py --asd talknet   # needs talknet weights + col_audio.wav
+```
 
-![columbia](docs/columbia_f1.png)
+| method | bell | boll | lieb | long | sick | **avg** |
+|---|---|---|---|---|---|---|
+| mouth-motion (heuristic) | 77.6 | 69.8 | 99.7 | 35.4 | 83.2 | **73.1** |
+| **TalkNet** (audio-visual) | 77.1 | 72.8 | 98.5 | 51.6 | 95.0 | **79.0** |
+| TalkNet (reported, full pipeline) | — | — | — | — | — | 96.3 |
 
-This is an **honest baseline for the current method**: ~73 avg F1 with a clear
-~23-point gap to TalkNet (and a weak spot on `long`), which **quantifies the
-headroom** the planned TalkNet swap should close. The same harness will be
-re-run on TalkNet to measure the delta.
+![columbia](docs/columbia_compare.png)
 
-*Not yet done:* real multi-party **addressee** precision/recall
-(Vernissage/AMI) — needs a labeled multi-party dataset.
+Swapping the mouth-motion heuristic for **TalkNet** lifts avg F1 **+5.9**, with
+the gains exactly where the heuristic was weak — `long` (35→52) and `sick`
+(83→95) — while the already-easy `bell`/`lieb` are unchanged. This validates
+audio-visual ASD as the upgrade path.
+
+**Why our TalkNet (79.0) < reported (96.3):** this is a drop-in integration
+using our lightweight preprocessing (YuNet crops, native 29.97 fps with a 4:1
+audio ratio, single-duration scoring) rather than TalkNet's full pipeline
+(S3FD + scene detection, 25 fps resample, multi-duration averaging). The
+residual gap is **preprocessing, not the model** — a concrete pointer to where
+further integration effort pays off.
+
+*Not yet done:* closing the preprocessing gap; real multi-party **addressee**
+precision/recall (Vernissage/AMI) — needs a labeled multi-party dataset.
 
 **Model-free ASD** (mouth motion) is a deliberate Stage-1 proxy for
 audio-visual ASD (TalkNet). **Known limitation:** `ADDRESSING_ROBOT` currently =
@@ -297,7 +313,8 @@ Ekstedt & Skantze 2022). Planned next:
 - `make_test_convo.py` — builds the scripted validation clip.
 - `eval_asd.py` — quantitative active-speaker-detector eval (P/R/F1).
 - `eval_fusion.py` — controlled multi-party addressee state-machine eval.
-- `eval_columbia.py` — Columbia ASD benchmark (per-speaker F1) for the detector.
+- `eval_columbia.py` — Columbia ASD benchmark (per-speaker F1), `--asd mouth|talknet`.
+- `talknet_asd.py` + `talknet/` — vendored TalkNet audio-visual ASD (inference).
 
 ## Credits & license
 

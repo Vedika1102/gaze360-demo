@@ -30,3 +30,7 @@ __pycache__/
 
 # debug frames
 dbg_*.jpg
+
+# vendored model weights (download via gdown, see README)
+*.model
+talknet/pretrain_TalkSet.model
