@@ -27,3 +27,6 @@ models/
 # python cruft
 __pycache__/
 *.pyc
+
+# debug frames
+dbg_*.jpg

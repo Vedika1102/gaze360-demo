@@ -235,8 +235,27 @@ heuristic that quantifies the headroom a TalkNet swap would fill.
 - the "looking-but-addressing-others" case is reported as a **known gap**
   (fires `ADDRESSING_ROBOT`; needs Stage 2/3)
 
-*Not yet done:* recognized ASD benchmark (Columbia/AVA) and real multi-party
-addressee precision/recall (Vernissage/AMI) — those need dataset downloads.
+### Recognized ASD benchmark — Columbia
+
+`eval_columbia.py` runs the current mouth-motion detector through the standard
+**Columbia ASD** protocol (Chakravarty & Zisserman 2016): per labeled frame,
+match each speaker's GT face box to a detected face, take that face's speaking
+score, report per-speaker F1 over {bell, boll, lieb, long, sick}. Evaluated on
+dense mixed-class windows (a subset of the 87-min video) to bound CPU cost.
+
+| speaker | bell | boll | lieb | long | sick | **avg** | TalkNet |
+|---|---|---|---|---|---|---|---|
+| F1 | 75.8 | 71.0 | 99.8 | 34.6 | 83.0 | **72.8** | 96.3 |
+
+![columbia](docs/columbia_f1.png)
+
+This is an **honest baseline for the current method**: ~73 avg F1 with a clear
+~23-point gap to TalkNet (and a weak spot on `long`), which **quantifies the
+headroom** the planned TalkNet swap should close. The same harness will be
+re-run on TalkNet to measure the delta.
+
+*Not yet done:* real multi-party **addressee** precision/recall
+(Vernissage/AMI) — needs a labeled multi-party dataset.
 
 **Model-free ASD** (mouth motion) is a deliberate Stage-1 proxy for
 audio-visual ASD (TalkNet). **Known limitation:** `ADDRESSING_ROBOT` currently =
@@ -278,6 +297,7 @@ Ekstedt & Skantze 2022). Planned next:
 - `make_test_convo.py` — builds the scripted validation clip.
 - `eval_asd.py` — quantitative active-speaker-detector eval (P/R/F1).
 - `eval_fusion.py` — controlled multi-party addressee state-machine eval.
+- `eval_columbia.py` — Columbia ASD benchmark (per-speaker F1) for the detector.
 
 ## Credits & license
 
