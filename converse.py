@@ -16,6 +16,7 @@ import cv2
 
 from addressee import AddresseeFusion
 from asd import MouthMotionASD
+from controller import ConversationController
 from gaze import GazePipeline
 
 _STATE_COLOR = {
@@ -45,7 +46,7 @@ def annotate(frame, results, states, role, primary):
                 (0, 0, 255) if role == "ACTIVE" else (200, 200, 0), 2, cv2.LINE_AA)
 
 
-def process_frame(frame, pipe, asd, fusion, t):
+def process_frame(frame, pipe, asd, fusion, controller, t):
     results, _ = pipe.infer(frame, t=t)
     per_person = []
     for r in results:
@@ -53,7 +54,19 @@ def process_frame(frame, pipe, asd, fusion, t):
         per_person.append({**r, "speaking": speaking, "speak_score": score})
     role, primary, states = fusion.update(per_person)
     annotate(frame, results, states, role, primary)
-    return role, primary, states
+
+    ctrl = None
+    if controller is not None:
+        p = states.get(primary, {})
+        cstate, action, ctrl = controller.step(
+            t, primary_addressing=(p.get("state") == "ADDRESSING_ROBOT"),
+            primary_present=(primary in states),
+            user_vocalizing=bool(p.get("speaking", False)))
+        col = (0, 0, 255) if cstate == "SPEAKING" else (
+            (0, 200, 0) if cstate == "LISTENING" else (200, 200, 0))
+        cv2.putText(frame, f"ROBOT: {cstate}  action={action}", (10, 52),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, col, 2, cv2.LINE_AA)
+    return role, primary, states, ctrl
 
 
 def main():
@@ -65,6 +78,8 @@ def main():
     ap.add_argument("--detector", default="mtcnn", choices=["mtcnn", "yunet"])
     ap.add_argument("--cone-deg", type=float, default=25.0)
     ap.add_argument("--speak-thresh", type=float, default=6.0)
+    ap.add_argument("--controller", action="store_true",
+                    help="run the conversational controller (turn-taking policy)")
     ap.add_argument("--device", default="cpu")
     args = ap.parse_args()
 
@@ -72,6 +87,7 @@ def main():
                         lowlight=True, detector=args.detector, min_prob=0.6)
     asd = MouthMotionASD(speak_thresh=args.speak_thresh)
     fusion = AddresseeFusion(cone_deg=args.cone_deg)
+    controller = ConversationController() if args.controller else None
     log_fp = open(args.log, "w") if args.log else None
 
     cap = cv2.VideoCapture(int(args.source) if args.source.isdigit() else args.source)
@@ -92,11 +108,12 @@ def main():
             if not ok:
                 break
             now = time.time()
-            role, primary, states = process_frame(frame, pipe, asd, fusion, now - t0)
+            role, primary, states, ctrl = process_frame(
+                frame, pipe, asd, fusion, controller, now - t0)
             if log_fp:
                 log_fp.write(json.dumps({"frame": idx, "t": round(now - t0, 3),
                                          "role": role, "primary": primary,
-                                         "people": states}) + "\n")
+                                         "people": states, "controller": ctrl}) + "\n")
             idx += 1
             if writer is not None:
                 writer.write(frame)

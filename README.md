@@ -278,12 +278,47 @@ audio-visual ASD (TalkNet). **Known limitation:** `ADDRESSING_ROBOT` currently =
 attentive + speaking, so someone who looks at the robot while talking to *other
 people* can misfire. Disambiguating that — plus **backchannel vs interruption**
 turn-taking — needs multi-party mutual-gaze and a turn-taking model (**VAP**,
-Ekstedt & Skantze 2022). Planned next:
+Ekstedt & Skantze 2022).
 
-- **Stage 2** — add VAP: distinguish backchannels ("mhm", keep talking) from
-  genuine interruptions (yield, then resume-or-abandon the prior plan).
-- **Stage 3** — multi-party robustness + the "looking-but-addressing-others"
-  case, with addressee precision/recall on labeled multi-party video.
+## Conversational controller (Stage 2b)
+
+The perception signals feed an **interpretable controller** (`controller.py`)
+that turns "who is addressing the robot" + the user's vocal activity into robot
+**turn-taking actions** — the piece that makes this a conversational system, not
+just a detector:
+
+```
+robot state:  PASSIVE ─addressed─► LISTENING ─user yields─► SPEAKING ─► LISTENING
+while SPEAKING, the user vocalizes:
+   BACKCHANNEL ("mhm")      → CONTINUE   (do not stop)
+   TURN_SHIFT (interruption) → YIELD, then RESUME (most of the utterance already
+                               delivered) or ABANDON (interrupted early)
+```
+
+Turn-taking events come through a `TurnTakingSignal` **interface**
+(`turntaking.py`); the current backend is a lightweight VAD+timing heuristic
+(vocalization run-length, silence gaps, overlap with the robot's turn). A
+pretrained **VAP** model (Ekstedt & Skantze 2022) can drop in behind the same
+interface later — the mouth-motion→TalkNet pattern applied to turn-taking.
+
+Every step emits a trace of the signals behind the decision (interpretable).
+Run the full stack (gaze → ASD → addressee → controller) on video/webcam:
+
+```bash
+python converse.py --source 0 --controller
+```
+
+**Verified** (`eval_controller.py`, scripted conversation timelines): **5/5
+scenarios** — engage→take-turn, backchannel→continue, early-interrupt→abandon,
+late-interrupt→resume, disengage→passive. End-to-end on a real-face clip the
+controller goes PASSIVE → LISTENING (on addressing) → SPEAKING (when the user
+yields).
+
+### Remaining
+
+- Swap the heuristic turn-taking backend for **VAP** and compare.
+- Real multi-party robustness + the "looking-but-addressing-others" case, with
+  **addressee precision/recall on labeled multi-party video** (Vernissage/AMI).
 
 ## How it works
 
@@ -315,6 +350,9 @@ Ekstedt & Skantze 2022). Planned next:
 - `eval_fusion.py` — controlled multi-party addressee state-machine eval.
 - `eval_columbia.py` — Columbia ASD benchmark (per-speaker F1), `--asd mouth|talknet`.
 - `talknet_asd.py` + `talknet/` — vendored TalkNet audio-visual ASD (inference).
+- `turntaking.py` — turn-taking signal interface + VAD/timing heuristic backend.
+- `controller.py` — interpretable conversational controller (turn-taking policy).
+- `eval_controller.py` — scripted conversation-scenario test for the controller.
 
 ## Credits & license
 
